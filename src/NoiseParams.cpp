@@ -26,6 +26,7 @@ NoiseParams::NoiseParams() {
     setAccelerometerBiasNoise(0.0001);
     setLandmarkNoise(0.1);
     setContactNoise(0.1);
+    setGpsNoise(0.1)
 }
 
 void NoiseParams::setGyroscopeNoise(double std) { Qg_ = std*std*Eigen::Matrix3d::Identity(); }
@@ -52,12 +53,17 @@ void NoiseParams::setContactNoise(double std) { Qc_ = std*std*Eigen::Matrix3d::I
 void NoiseParams::setContactNoise(const Eigen::Vector3d& std) { Qc_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setContactNoise(const Eigen::Matrix3d& cov) { Qc_ = cov; }
 
+void NoiseParams::setGpsNoise(double std) { Qgps_ = std*std*Eigen::Matrix3d::Identity(); }
+void NoiseParams::setGpsNoise(const Eigen::Vector3d& std) { Qgps_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
+void NoiseParams::setGpsNoise(const Eigen::Matrix3d& cov) { Qgps_ = cov; }
+
 Eigen::Matrix3d NoiseParams::getGyroscopeCov() { return Qg_; }
 Eigen::Matrix3d NoiseParams::getAccelerometerCov() { return Qa_; }
 Eigen::Matrix3d NoiseParams::getGyroscopeBiasCov() { return Qbg_; }
 Eigen::Matrix3d NoiseParams::getAccelerometerBiasCov() { return Qba_; }
 Eigen::Matrix3d NoiseParams::getLandmarkCov() { return Ql_; }
 Eigen::Matrix3d NoiseParams::getContactCov() { return Qc_; }
+Eigen::Matrix3d NoiseParams::getGpsCov() { return Qgps_; }
 
 std::ostream& operator<<(std::ostream& os, const NoiseParams& p) {
     os << "--------- Noise Params -------------" << endl;
@@ -67,6 +73,7 @@ std::ostream& operator<<(std::ostream& os, const NoiseParams& p) {
     os << "Accelerometer Bias Covariance:\n" << p.Qba_ << endl;
     os << "Landmark Covariance:\n" << p.Ql_ << endl;
     os << "Contact Covariance:\n" << p.Qc_ << endl;
+    os << "GPS Covariance:\n" << p.Qgps_ << endl;
     os << "-----------------------------------" << endl;
     return os;
 }

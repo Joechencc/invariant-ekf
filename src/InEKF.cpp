@@ -189,6 +189,67 @@ void InEKF::Propagate(const Eigen::Matrix<double,6,1>& m, double dt) {
     return;
 }
 
+// Left-InEKF Propagation - Inertial Data
+void InEKF::Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt) {
+
+    Eigen::Vector3d w = m.head(3) - state_.getGyroscopeBias();    // Angular Velocity
+    Eigen::Vector3d a = m.tail(3) - state_.getAccelerometerBias(); // Linear Acceleration
+    
+    Eigen::MatrixXd X = state_.getX();
+    Eigen::MatrixXd P = state_.getP();
+
+    // Extract State
+    Eigen::Matrix3d R = state_.getRotation();
+    Eigen::Vector3d v = state_.getVelocity();
+    Eigen::Vector3d p = state_.getPosition();
+
+    // Strapdown IMU motion model
+    Eigen::Vector3d phi = w*dt; 
+    Eigen::Matrix3d R_pred = R * Exp_SO3(phi);
+    Eigen::Vector3d v_pred = v + (R*a + g_)*dt;
+    Eigen::Vector3d p_pred = p + v*dt + 0.5*(R*a + g_)*dt*dt;
+
+    // Set new state (bias has constant dynamics)
+    state_.setRotation(R_pred);
+    state_.setVelocity(v_pred);
+    state_.setPosition(p_pred);
+
+    // ---- Linearized invariant error dynamics -----
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int dimTheta = state_.dimTheta();
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(dimP,dimP);
+    A.block<3,3>(0,dimP-dimTheta) = -Eigen::Matrix3d::Identity(); 
+    A.block<3,3>(3,dimP-dimTheta+3) = -Eigen::Matrix3d::Identity();
+    A.block<3,3>(3,0) = -skew(a);
+    for (int i=0; i<dimX; ++i) {
+        A.block<3,3>(3*i,3*i) = -skew(w);
+    } 
+
+    // Noise terms
+    Eigen::MatrixXd Qk = Eigen::MatrixXd::Zero(dimP,dimP); // Landmark noise terms will remain zero
+    Qk.block<3,3>(0,0) = noise_params_.getGyroscopeCov(); 
+    Qk.block<3,3>(3,3) = noise_params_.getAccelerometerCov();
+    for(map<int,int>::iterator it=estimated_contact_positions_.begin(); it!=estimated_contact_positions_.end(); ++it) {
+        Qk.block<3,3>(3+3*(it->second-3),3+3*(it->second-3)) = noise_params_.getContactCov(); // Contact noise terms
+    }
+    Qk.block<3,3>(dimP-dimTheta,dimP-dimTheta) = noise_params_.getGyroscopeBiasCov();
+    Qk.block<3,3>(dimP-dimTheta+3,dimP-dimTheta+3) = noise_params_.getAccelerometerBiasCov();
+
+    // Discretization
+    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(dimP,dimP);
+    Eigen::MatrixXd Phi = I + A*dt; // Fast approximation of exp(A*dt). TODO: explore using the full exp() instead
+    Eigen::MatrixXd Qk_hat = Phi * Qk * Phi.transpose() * dt; // Approximated discretized noise matrix (faster by 400 microseconds)
+
+    // Propagate Covariance
+    Eigen::MatrixXd P_pred = Phi * P * Phi.transpose() + Qk_hat;
+
+    // Set new covariance
+    state_.setP(P_pred);
+
+    return;
+}
+
 // Correct State: Right-Invariant Observation
 void InEKF::Correct(const Observation& obs) {
     // Compute Kalman Gain
@@ -209,6 +270,37 @@ void InEKF::Correct(const Observation& obs) {
 
     // Update state
     Eigen::MatrixXd X_new = dX*state_.getX(); // Right-Invariant Update
+    Eigen::VectorXd Theta_new = state_.getTheta() + dTheta;
+    state_.setX(X_new); 
+    state_.setTheta(Theta_new);
+
+    // Update Covariance
+    Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(state_.dimP(),state_.dimP()) - K*obs.H;
+    Eigen::MatrixXd P_new = IKH * P * IKH.transpose() + K*obs.N*K.transpose(); // Joseph update form
+
+    state_.setP(P_new); 
+}
+
+// Correct State: Left-Invariant Observation
+void InEKF::Correct_left(const Observation& obs) {
+    // Compute Kalman Gain
+    Eigen::MatrixXd P = state_.getP();
+    Eigen::MatrixXd PHT = P * obs.H.transpose();
+    Eigen::MatrixXd S = obs.H * PHT + obs.N;
+    Eigen::MatrixXd K = PHT * S.inverse();
+
+    // Copy X along the diagonals if more than one measurement
+    Eigen::MatrixXd BigX;
+    state_.copyDiagX(obs.Y.rows()/state_.dimX(), BigX);
+   
+    // Compute correction terms
+    Eigen::MatrixXd Z = BigX.inverse()*obs.Y - obs.b;
+    Eigen::VectorXd delta = K*obs.PI*Z;
+    Eigen::MatrixXd dX = Exp_SEK3(delta.segment(0,delta.rows()-state_.dimTheta()));
+    Eigen::VectorXd dTheta = delta.segment(delta.rows()-state_.dimTheta(), state_.dimTheta());
+
+    // Update state
+    Eigen::MatrixXd X_new = state_.getX()*dX; // Left-Invariant Update
     Eigen::VectorXd Theta_new = state_.getTheta() + dTheta;
     state_.setX(X_new); 
     state_.setTheta(Theta_new);
@@ -544,6 +636,71 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
             estimated_contact_positions_.insert(pair<int,int> (it->id, startIndex));
         }
     }
+
+    return;
+}
+
+void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
+#if INEKF_USE_MUTEX
+    lock_guard<mutex> mlock(estimated_contacts_mutex_);
+#endif
+    Eigen::VectorXd Y;
+    Eigen::VectorXd b;
+    Eigen::MatrixXd H;
+    Eigen::MatrixXd N;
+    Eigen::MatrixXd PI;
+
+    Eigen::Matrix3d R = state_.getRotation();
+
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int startIndex;
+
+    // Fill out Y
+    startIndex = Y.rows();
+    Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    Y.segment(startIndex,3) = gps.head(3);
+    Y(startIndex+4) = 1; 
+
+    // Fill out b
+    startIndex = b.rows();
+    b.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    b(startIndex+4) = 1;          
+
+    // Fill out H
+    startIndex = H.rows();
+    H.conservativeResize(startIndex+3, dimP);
+    H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
+    H.block(startIndex,6,3,3) = Eigen::Matrix3d::Identity(); // I
+
+    // Fill out N
+    startIndex = N.rows();
+    N.conservativeResize(startIndex+3, startIndex+3);
+    N.block(startIndex,0,3,startIndex) = Eigen::MatrixXd::Zero(3,startIndex);
+    N.block(0,startIndex,startIndex,3) = Eigen::MatrixXd::Zero(startIndex,3);
+    N.block(startIndex,startIndex,3,3) = R.transpose() * noise_params_.getGpsCov() * R;
+
+    // Fill out PI      
+    startIndex = PI.rows();
+    int startIndex2 = PI.cols();
+    PI.conservativeResize(startIndex+3, startIndex2+dimX);
+    PI.block(startIndex,0,3,startIndex2) = Eigen::MatrixXd::Zero(3,startIndex2);
+    PI.block(0,startIndex2,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+    PI.block(startIndex,startIndex2,3,dimX) = Eigen::MatrixXd::Zero(3,dimX);
+    PI.block(startIndex,startIndex2,3,3) = Eigen::Matrix3d::Identity();
+
+    // Correct state
+    Observation obs(Y,b,H,N,PI);
+    if (!obs.empty()) {
+        this->Correct_left(obs);
+    }
+
+    // Remove contacts from state
+    //if (remove_contacts.size() > 0) {}
+    // Augment state with newly detected contacts
+    //if (new_contacts.size() > 0) {}
 
     return;
 }
