@@ -17,6 +17,7 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <cmath>
 #if INEKF_USE_MUTEX
 #include <mutex>
 #endif
@@ -89,6 +90,7 @@ class InEKF {
         void setNoiseParams(NoiseParams params);
         void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
         void setContacts(std::vector<std::pair<int,bool> > contacts);
+        void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla);
 
         void Propagate(const Eigen::Matrix<double,6,1>& m, double dt);
         void Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt);
@@ -98,10 +100,14 @@ class InEKF {
         void CorrectKinematics(const vectorKinematics& measured_kinematics);
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);
 
+        Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla);
+        Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,,3,1>& lla);
+
     private:
         RobotState state_;
         NoiseParams noise_params_;
         const Eigen::Vector3d g_; // Gravity
+        Eigen::Matrix<double,3,1> initial_lla;
         mapIntVector3d prior_landmarks_;
         std::map<int,int> estimated_landmarks_;
         std::map<int,bool> contacts_;

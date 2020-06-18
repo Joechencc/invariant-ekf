@@ -121,6 +121,11 @@ std::map<int,bool> InEKF::getContacts() {
     return contacts_; 
 }
 
+// Set initial GPS lla state
+void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
+    initial_lla = lla;
+}
+
 
 // InEKF Propagation - Inertial Data
 void InEKF::Propagate(const Eigen::Matrix<double,6,1>& m, double dt) {
@@ -640,6 +645,38 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
     return;
 }
 
+Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
+    static const double R_earth = 6.371e6;
+    const double lat = lla(0,0) * M_PI / 180;
+    const double lon = lla(1,0) * M_PI / 180;
+    const double alt = lla(2,0);
+
+    const double r = R_earth + alt;
+    const double z = r * sin(lat);
+    const double q = r * cos(lat);
+    const double x = q * cos(lon);
+    const double y = q * sin(lon);
+
+    return (Eigen::Vector3d() << x, y, z).finished();
+}
+
+Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,,3,1>& lla) {
+    Eigen::Vector3d ori_ecef = lla_to_ecef(initial_lla);
+    Eigen::Vector3d cur_ecef = lla_to_ecef(lla);
+    Eigen::Vector3d r_ecef = cur_ecef - ori_ecef;
+
+    double phi = ori_ecef(0) * M_PI / 180;
+    double lam = ori_ecef(1) * M_PI / 180;
+
+    Eigen::Matrix3d R = (Eigen::Matrix3d <<
+        -sin(lam),          cos(lam),           0,
+        -cos(lam)*sin(phi), -sin(lam)*sin(phi), cos(phi),
+        cos(lam)*cos(phi),  sin(lam)*cos(phi),  sin(phi)
+    ).finished();
+
+    return R * r_ecef;
+}
+
 void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
 #if INEKF_USE_MUTEX
     lock_guard<mutex> mlock(estimated_contacts_mutex_);
@@ -651,6 +688,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     Eigen::MatrixXd PI;
 
     Eigen::Matrix3d R = state_.getRotation();
+    Eigen::Matrix<double,3,1> xyz = lla_to_enu(gps);
 
     int dimX = state_.dimX();
     int dimP = state_.dimP();
@@ -660,7 +698,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     startIndex = Y.rows();
     Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
-    Y.segment(startIndex,3) = gps.head(3);
+    Y.segment(startIndex,3) = xyz.head(3);
     Y(startIndex+4) = 1; 
 
     // Fill out b
