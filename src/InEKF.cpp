@@ -126,6 +126,19 @@ void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
     initial_lla = lla;
 }
 
+// Set xyz coordinates TF from enu to odo frame
+// Set initial heading
+void SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
+    const double yaw = -euler(2,0);
+    enu_to_odo = (Eigen::Matrix3d <<
+        cos(yaw),-sin(yaw), 0,
+        sin(yaw), cos(yaw), 0,
+               0,        0, 1).finished();
+    
+    // Use coordinate ENU, use initial heading angle to update the initial rotation matrix
+    state_.setRotation(enu_to_odo.inverse());
+}
+
 
 // InEKF Propagation - Inertial Data
 void InEKF::Propagate(const Eigen::Matrix<double,6,1>& m, double dt) {
@@ -645,22 +658,28 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
     return;
 }
 
+// reference to https://en.wikipedia.org/wiki/Geographic_coordinate_conversion
 Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
-    static const double R_earth = 6.371e6;
+    const double equatorial_radius = 6378137.0;
+    const double polar_radius = 6356752.31424518;
+    const double square_ratio = polar_radius * polar_radius / (equatorial_radius * equatorial_radius);
+    //static const double R_earth = 6.371e6;
+
     const double lat = lla(0,0) * M_PI / 180;
     const double lon = lla(1,0) * M_PI / 180;
     const double alt = lla(2,0);
+    const double N = equatorial_radius / sqrt(1 - (1-square_ratio) * sin(lat) * sin(lat));
 
-    const double r = R_earth + alt;
-    const double z = r * sin(lat);
-    const double q = r * cos(lat);
+    const double z = (square_ratio * N + alt) * sin(lat);
+    const double q = (N + alt) * cos(lat);
     const double x = q * cos(lon);
     const double y = q * sin(lon);
 
     return (Eigen::Vector3d() << x, y, z).finished();
 }
 
-Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,,3,1>& lla) {
+Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
+    // assume readings are geodetic
     Eigen::Vector3d ori_ecef = lla_to_ecef(initial_lla);
     Eigen::Vector3d cur_ecef = lla_to_ecef(lla);
     Eigen::Vector3d r_ecef = cur_ecef - ori_ecef;
