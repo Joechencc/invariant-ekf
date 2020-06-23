@@ -122,15 +122,15 @@ std::map<int,bool> InEKF::getContacts() {
 }
 
 // Set initial GPS lla state
-void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
+void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
     initial_lla = lla;
 }
 
 // Set xyz coordinates TF from enu to odo frame
 // Set initial heading
-void SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
+void InEKF::SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
     const double yaw = -euler(2,0);
-    enu_to_odo = (Eigen::Matrix3d <<
+    enu_to_odo = (Eigen::Matrix3d() <<
         cos(yaw),-sin(yaw), 0,
         sin(yaw), cos(yaw), 0,
                0,        0, 1).finished();
@@ -659,7 +659,7 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
 }
 
 // reference to https://en.wikipedia.org/wiki/Geographic_coordinate_conversion
-Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
+Eigen::Vector3d InEKF::lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
     const double equatorial_radius = 6378137.0;
     const double polar_radius = 6356752.31424518;
     const double square_ratio = polar_radius * polar_radius / (equatorial_radius * equatorial_radius);
@@ -678,7 +678,7 @@ Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
     return (Eigen::Vector3d() << x, y, z).finished();
 }
 
-Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
+Eigen::Matrix<double,3,1> InEKF::lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
     // assume readings are geodetic
     Eigen::Vector3d ori_ecef = lla_to_ecef(initial_lla);
     Eigen::Vector3d cur_ecef = lla_to_ecef(lla);
@@ -687,7 +687,7 @@ Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
     double phi = ori_ecef(0) * M_PI / 180;
     double lam = ori_ecef(1) * M_PI / 180;
 
-    Eigen::Matrix3d R = (Eigen::Matrix3d <<
+    Eigen::Matrix3d R = (Eigen::Matrix3d() <<
         -sin(lam),          cos(lam),           0,
         -cos(lam)*sin(phi), -sin(lam)*sin(phi), cos(phi),
         cos(lam)*cos(phi),  sin(lam)*cos(phi),  sin(phi)

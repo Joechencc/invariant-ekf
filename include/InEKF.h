@@ -96,7 +96,7 @@ class InEKF {
         void Propagate(const Eigen::Matrix<double,6,1>& m, double dt);
         void Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt);
         void Correct(const Observation& obs);
-        void Correct_left(const Observations& obs);
+        void Correct_left(const Observation& obs);
         void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
         void CorrectKinematics(const vectorKinematics& measured_kinematics);
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);

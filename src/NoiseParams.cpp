@@ -26,7 +26,7 @@ NoiseParams::NoiseParams() {
     setAccelerometerBiasNoise(0.0001);
     setLandmarkNoise(0.1);
     setContactNoise(0.1);
-    setGpsNoise(0.1)
+    setGpsNoise(0.1);
 }
 
 void NoiseParams::setGyroscopeNoise(double std) { Qg_ = std*std*Eigen::Matrix3d::Identity(); }
