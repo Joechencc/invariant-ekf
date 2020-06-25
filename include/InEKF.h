@@ -15,6 +15,7 @@
 #define INEKF_H 
 #include <Eigen/Dense>
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <map>
 #include <cmath>
@@ -114,6 +115,8 @@ class InEKF {
         std::map<int,int> estimated_landmarks_;
         std::map<int,bool> contacts_;
         std::map<int,int> estimated_contact_positions_;
+        std::ofstream file;
+        std::string filepath_odo = "/home/chenli/vrx_ws/src/vrx/localization/src/data_odo_xyz.csv";
 #if INEKF_USE_MUTEX
         std::mutex estimated_contacts_mutex_;
         std::mutex estimated_landmarks_mutex_;
