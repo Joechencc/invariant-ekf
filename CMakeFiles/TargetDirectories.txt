@@ -1,7 +1,0 @@
-/home/chenli/invariant-ekf/CMakeFiles/kinematics.dir
-/home/chenli/invariant-ekf/CMakeFiles/rebuild_cache.dir
-/home/chenli/invariant-ekf/CMakeFiles/inekf.dir
-/home/chenli/invariant-ekf/CMakeFiles/landmarks.dir
-/home/chenli/invariant-ekf/CMakeFiles/propagation_speed.dir
-/home/chenli/invariant-ekf/CMakeFiles/correction_speed.dir
-/home/chenli/invariant-ekf/CMakeFiles/edit_cache.dir

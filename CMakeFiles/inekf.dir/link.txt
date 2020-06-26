@@ -1,1 +1,0 @@
-/usr/bin/g++ -fPIC  -std=c++11 -O3 -DEIGEN_NO_DEBUG -march=native -Wl,--no-as-needed -DINEKF_USE_MUTEX=false  -shared -Wl,-soname,libinekf.so -o lib/libinekf.so CMakeFiles/inekf.dir/src/InEKF.cpp.o CMakeFiles/inekf.dir/src/RobotState.cpp.o CMakeFiles/inekf.dir/src/LieGroup.cpp.o CMakeFiles/inekf.dir/src/NoiseParams.cpp.o  -L/home/chenli/invariant-ekf/usr/lib/x86_64-linux-gnu 
