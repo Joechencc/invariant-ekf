@@ -124,9 +124,11 @@ std::map<int,bool> InEKF::getContacts() {
 // Set initial GPS lla state
 void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
     initial_lla = lla;
-    file.open(filepath_odo.c_str());
-	file << "timestamp [ns]" << "," << "odo x" << "," << "odo y" << "," << "odo z" << endl;
-	file.close();
+    if (output_gps_) {
+        file.open(filepath_odo.c_str());
+        file << "timestamp [ns]" << "," << "odo x" << "," << "odo y" << "," << "odo z" << endl;
+        file.close();
+    }
 }
 
 // Set xyz coordinates TF from enu to odo frame
@@ -140,6 +142,11 @@ void InEKF::SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
     
     // Use coordinate ENU, use initial heading angle to update the initial rotation matrix
     state_.setRotation(enu_to_odo.inverse());
+}
+
+void InEKF::SetGpsFilePath(const std::string& path) {
+    filepath_odo = path;
+    output_gps_ = true;
 }
 
 
@@ -711,10 +718,12 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
 
     Eigen::Matrix3d R = state_.getRotation();
     Eigen::Matrix<double,3,1> xyz = lla_to_enu(gps);
-    file.open(filepath_odo.c_str(), ios::app);
-    file.precision(16);
-	file << 0 << "," << xyz(0,0) << "," << xyz(1,0) << "," << xyz(2,0) << endl;
-	file.close();
+    if (output_gps_) {
+        file.open(filepath_odo.c_str(), ios::app);
+        file.precision(16);
+        file << 0 << "," << xyz(0,0) << "," << xyz(1,0) << "," << xyz(2,0) << endl;
+        file.close();
+    }
 
     int dimX = state_.dimX();
     int dimP = state_.dimP();

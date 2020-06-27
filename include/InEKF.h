@@ -104,6 +104,7 @@ class InEKF {
 
         Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla);
         Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,3,1>& lla);
+        void SetGpsFilePath(const std::string& path);
 
     private:
         RobotState state_;
@@ -116,7 +117,8 @@ class InEKF {
         std::map<int,bool> contacts_;
         std::map<int,int> estimated_contact_positions_;
         std::ofstream file;
-        std::string filepath_odo = "/home/chenli/vrx_ws/src/vrx/localization/src/data_odo_xyz.csv";
+        std::string filepath_odo;
+        bool output_gps_ = false;
 #if INEKF_USE_MUTEX
         std::mutex estimated_contacts_mutex_;
         std::mutex estimated_landmarks_mutex_;
