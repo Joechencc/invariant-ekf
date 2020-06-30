@@ -91,7 +91,7 @@ class InEKF {
         void setNoiseParams(NoiseParams params);
         void setPriorLandmarks(const mapIntVector3d& prior_landmarks);
         void setContacts(std::vector<std::pair<int,bool> > contacts);
-        void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla);
+        void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vector3d& gps_base_pos);
         void SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler);
 
         void Propagate(const Eigen::Matrix<double,6,1>& m, double dt);
@@ -110,14 +110,16 @@ class InEKF {
         RobotState state_;
         NoiseParams noise_params_;
         const Eigen::Vector3d g_; // Gravity
-        Eigen::Matrix<double,3,1> initial_lla;
-        Eigen::Matrix3d enu_to_odo;
+        Eigen::Matrix<double,3,1> initial_lla_;
+        Eigen::Matrix<double,3,1> initial_ecef_;
+        Eigen::Matrix3d enu_to_odo_;
+        Eigen::Matrix4d gps_to_base_;
         mapIntVector3d prior_landmarks_;
         std::map<int,int> estimated_landmarks_;
         std::map<int,bool> contacts_;
         std::map<int,int> estimated_contact_positions_;
         std::ofstream file;
-        std::string filepath_odo;
+        std::string filepath_odo_;
         bool output_gps_ = false;
 #if INEKF_USE_MUTEX
         std::mutex estimated_contacts_mutex_;

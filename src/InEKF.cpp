@@ -122,30 +122,35 @@ std::map<int,bool> InEKF::getContacts() {
 }
 
 // Set initial GPS lla state
-void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla) {
-    initial_lla = lla;
+void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vector3d& gps_base_pos) {
+    initial_lla_ = lla;
     if (output_gps_) {
-        file.open(filepath_odo.c_str());
+        file.open(filepath_odo_.c_str());
         file << "timestamp [ns]" << "," << "odo x" << "," << "odo y" << "," << "odo z" << endl;
         file.close();
     }
+    initial_ecef_ = lla_to_ecef(initial_lla_);
+
+    // TODO: set gps to base transform
+    gps_to_base_.setIdentity();
+    gps_to_base_.block<3,1>(0,3) = gps_base_pos;
 }
 
 // Set xyz coordinates TF from enu to odo frame
 // Set initial heading
 void InEKF::SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
     const double yaw = -euler(2,0);
-    enu_to_odo = (Eigen::Matrix3d() <<
+    enu_to_odo_ = (Eigen::Matrix3d() <<
         cos(yaw),-sin(yaw), 0,
         sin(yaw), cos(yaw), 0,
                0,        0, 1).finished();
     
     // Use coordinate ENU, use initial heading angle to update the initial rotation matrix
-    state_.setRotation(enu_to_odo.inverse());
+    state_.setRotation(enu_to_odo_.inverse());
 }
 
 void InEKF::SetGpsFilePath(const std::string& path) {
-    filepath_odo = path;
+    filepath_odo_ = path;
     output_gps_ = true;
 }
 
@@ -672,13 +677,12 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
 Eigen::Vector3d InEKF::lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
     const double equatorial_radius = 6378137.0;
     const double polar_radius = 6356752.31424518;
-    const double square_ratio = polar_radius * polar_radius / (equatorial_radius * equatorial_radius);
-    //static const double R_earth = 6.371e6;
+    const double square_ratio = pow(polar_radius,2) / pow(equatorial_radius,2);
 
     const double lat = lla(0,0) * M_PI / 180;
     const double lon = lla(1,0) * M_PI / 180;
     const double alt = lla(2,0);
-    const double N = equatorial_radius / sqrt(1 - (1-square_ratio) * sin(lat) * sin(lat));
+    const double N = equatorial_radius / sqrt(1 - (1-square_ratio) * pow(sin(lat),2));
 
     const double z = (square_ratio * N + alt) * sin(lat);
     const double q = (N + alt) * cos(lat);
@@ -689,13 +693,12 @@ Eigen::Vector3d InEKF::lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
 }
 
 Eigen::Matrix<double,3,1> InEKF::lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
-    // assume readings are geodetic
-    Eigen::Vector3d ori_ecef = lla_to_ecef(initial_lla);
+    // readings are geodetic
     Eigen::Vector3d cur_ecef = lla_to_ecef(lla);
-    Eigen::Vector3d r_ecef = cur_ecef - ori_ecef;
+    Eigen::Vector3d r_ecef = cur_ecef - initial_ecef_;
 
-    double phi = ori_ecef(0) * M_PI / 180;
-    double lam = ori_ecef(1) * M_PI / 180;
+    double phi = initial_lla_(0) * M_PI / 180;
+    double lam = initial_lla_(1) * M_PI / 180;
 
     Eigen::Matrix3d R = (Eigen::Matrix3d() <<
         -sin(lam),          cos(lam),           0,
@@ -718,10 +721,17 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
 
     Eigen::Matrix3d R = state_.getRotation();
     Eigen::Matrix<double,3,1> xyz = lla_to_enu(gps);
+    // TODO: transform gps pos to base pos
+    Eigen::Matrix4d enu_to_gps;
+    enu_to_gps.block<3,3>(0,0) = enu_to_odo_;
+    enu_to_gps.block<3,1>(0,3) = xyz.head(3);
+    enu_to_gps(3,3) = 1;
+    Eigen::Matrix4d base_xyz = gps_to_base_ * enu_to_gps;
+
     if (output_gps_) {
-        file.open(filepath_odo.c_str(), ios::app);
+        file.open(filepath_odo_.c_str(), ios::app);
         file.precision(16);
-        file << 0 << "," << xyz(0,0) << "," << xyz(1,0) << "," << xyz(2,0) << endl;
+        file << 0 << "," << base_xyz(0,3) << "," << base_xyz(1,3) << "," << base_xyz(2,3) << endl;
         file.close();
     }
 
@@ -733,7 +743,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     startIndex = Y.rows();
     Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
-    Y.segment(startIndex,3) = xyz.head(3);
+    Y.segment(startIndex,3) = base_xyz.block<3,1>(0,3);
     Y(startIndex+4) = 1; 
 
     // Fill out b
