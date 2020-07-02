@@ -112,8 +112,8 @@ class InEKF {
         const Eigen::Vector3d g_; // Gravity
         Eigen::Matrix<double,3,1> initial_lla_;
         Eigen::Matrix<double,3,1> initial_ecef_;
-        Eigen::Matrix3d enu_to_odo_;
-        Eigen::Matrix4d gps_to_base_;
+        Eigen::Matrix4d Ow_to_Og_;
+        Eigen::Vector3d Og_to_Ob_;
         mapIntVector3d prior_landmarks_;
         std::map<int,int> estimated_landmarks_;
         std::map<int,bool> contacts_;
