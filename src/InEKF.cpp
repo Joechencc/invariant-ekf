@@ -139,7 +139,8 @@ void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vec
 // Set initial heading
 void InEKF::SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
     // IMU facing east?
-    const double yaw = euler(2,0);
+    //const double yaw = euler(2,0);
+    double yaw = 0;
     Ow_to_Og_ = (Eigen::Matrix4d() <<
         cos(yaw),-sin(yaw), 0, 0,
         sin(yaw), cos(yaw), 0, 0,
@@ -729,6 +730,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
         sin(yaw), cos(yaw), 0,
                0,        0, 1).finished();
     */
+    /*
     Eigen::Matrix<double,3,1> xyz = lla_to_enu(gps);
 
     // TODO: transform gps pos to base pos
@@ -741,8 +743,8 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     Ow_to_Pg.block<3,1>(0,3) = xyz.head(3);
     Ow_to_Pg(3,3) = 1;
     Eigen::Vector4d base_Ow =  Ow_to_Og_ * Ow_to_Pg * se3_p;
-    Eigen::Matrix4d Ow_to_Ob = Ow_to_Og_.inverse();
-    Ow_to_Ob.block<3,1>(0,3) = -Og_to_Ob_;
+    Eigen::Matrix4d Ow_to_Ob = Eigen::Matrix4d::Identity(4,4);
+    Ow_to_Ob.block<3,1>(0,3) = - Ow_to_Og_.block<3,3>(0,0) * Og_to_Ob_;
     Eigen::Vector4d base_Ob = Ow_to_Ob * base_Ow;
 
     if (output_gps_) {
@@ -752,6 +754,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
         //file << 0 << "," << xyz(0,3) << "," << xyz(1,3) << "," << xyz(2,3) << endl; // without gps-base transform
         file.close();
     }
+    */
 
     int dimX = state_.dimX();
     int dimP = state_.dimP();
@@ -761,7 +764,8 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     startIndex = Y.rows();
     Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
-    Y.segment(startIndex,3) = base_Ob.head(3);
+    Y.segment(startIndex,3) = gps.head(3);
+    //Y.segment(startIndex,3) = base_Ob.head(3);
     //Y.segment(startIndex,3) = xyz.head(3);  // without gps-base transform
     Y(startIndex+4) = 1; 
 
