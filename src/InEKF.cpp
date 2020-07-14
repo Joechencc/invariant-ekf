@@ -256,6 +256,7 @@ void InEKF::Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt) {
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(dimP,dimP);
     A.block<3,3>(0,dimP-dimTheta) = -Eigen::Matrix3d::Identity(); 
     A.block<3,3>(3,dimP-dimTheta+3) = -Eigen::Matrix3d::Identity();
+    A.block<3,3>(6,3) = Eigen::Matrix3d::Identity();
     A.block<3,3>(3,0) = -skew(a);
     for (int i=0; i<dimX; ++i) {
         A.block<3,3>(3*i,3*i) = -skew(w);
