@@ -723,39 +723,6 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     Eigen::MatrixXd PI;
 
     Eigen::Matrix3d R = state_.getRotation();
-    /*
-    Eigen::Matrix<double,3,1> euler = R.eulerAngles(0,1,2);
-    const double yaw = euler(2,0);
-    Eigen::Matrix3d R_theta = (Eigen::Matrix3d() <<
-        cos(yaw),-sin(yaw), 0,
-        sin(yaw), cos(yaw), 0,
-               0,        0, 1).finished();
-    */
-    /*
-    Eigen::Matrix<double,3,1> xyz = lla_to_enu(gps);
-
-    // TODO: transform gps pos to base pos
-    Eigen::Vector4d se3_p;
-    se3_p.head(3) = Og_to_Ob_;
-    se3_p(3,0) = 1;
-
-    Eigen::Matrix4d Ow_to_Pg;
-    Ow_to_Pg.block<3,3>(0,0) = R; //R_theta
-    Ow_to_Pg.block<3,1>(0,3) = xyz.head(3);
-    Ow_to_Pg(3,3) = 1;
-    Eigen::Vector4d base_Ow =  Ow_to_Og_ * Ow_to_Pg * se3_p;
-    Eigen::Matrix4d Ow_to_Ob = Eigen::Matrix4d::Identity(4,4);
-    Ow_to_Ob.block<3,1>(0,3) = - Ow_to_Og_.block<3,3>(0,0) * Og_to_Ob_;
-    Eigen::Vector4d base_Ob = Ow_to_Ob * base_Ow;
-
-    if (output_gps_) {
-        file.open(filepath_odo_.c_str(), ios::app);
-        file.precision(16);
-        file << 0 << "," << base_Ob(0,3) << "," << base_Ob(1,3) << "," << base_Ob(2,3) << endl;
-        //file << 0 << "," << xyz(0,3) << "," << xyz(1,3) << "," << xyz(2,3) << endl; // without gps-base transform
-        file.close();
-    }
-    */
 
     int dimX = state_.dimX();
     int dimP = state_.dimP();
@@ -804,14 +771,71 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
         this->Correct_left(obs);
     }
 
-    // Remove contacts from state
-    //if (remove_contacts.size() > 0) {}
-    // Augment state with newly detected contacts
-    //if (new_contacts.size() > 0) {}
-
     return;
 }
 
+  
+void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
+#if INEKF_USE_MUTEX
+    lock_guard<mutex> mlock(estimated_contacts_mutex_);
+#endif
+    Eigen::VectorXd Y;
+    Eigen::VectorXd b;
+    Eigen::MatrixXd H;
+    Eigen::MatrixXd N;
+    Eigen::MatrixXd PI;
+
+    Eigen::Matrix3d R = state_.getRotation();
+
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int startIndex;
+
+    // Fill out Y
+    startIndex = Y.rows();
+    Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    Y.segment(startIndex,3) = dvl.head(3);
+    //Y.segment(startIndex,3) = base_Ob.head(3);
+    //Y.segment(startIndex,3) = xyz.head(3);  // without dvl-base transform
+    Y(startIndex+4) = 1; 
+
+    // Fill out b
+    startIndex = b.rows();
+    b.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    b(startIndex+3) = 1;          
+
+    // Fill out H
+    startIndex = H.rows();
+    H.conservativeResize(startIndex+3, dimP);
+    H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
+    H.block(startIndex,3,3,3) = Eigen::Matrix3d::Identity(); // I
+
+    // Fill out N
+    startIndex = N.rows();
+    N.conservativeResize(startIndex+3, startIndex+3);
+    N.block(startIndex,0,3,startIndex) = Eigen::MatrixXd::Zero(3,startIndex);
+    N.block(0,startIndex,startIndex,3) = Eigen::MatrixXd::Zero(startIndex,3);
+    N.block(startIndex,startIndex,3,3) = R.transpose() * noise_params_.getDvlCov() * R;
+
+    // Fill out PI      
+    startIndex = PI.rows();
+    int startIndex2 = PI.cols();
+    PI.conservativeResize(startIndex+3, startIndex2+dimX);
+    PI.block(startIndex,0,3,startIndex2) = Eigen::MatrixXd::Zero(3,startIndex2);
+    PI.block(0,startIndex2,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+    PI.block(startIndex,startIndex2,3,dimX) = Eigen::MatrixXd::Zero(3,dimX);
+    PI.block(startIndex,startIndex2,3,3) = Eigen::Matrix3d::Identity();
+
+    // Correct state
+    Observation obs(Y,b,H,N,PI);
+    if (!obs.empty()) {
+        this->Correct(obs);
+    }
+
+    return;
+}
 
 void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
     unsigned int dimX = M.cols();
@@ -822,3 +846,4 @@ void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
 }
 
 } // end inekf namespace
+

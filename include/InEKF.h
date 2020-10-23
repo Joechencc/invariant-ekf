@@ -99,6 +99,7 @@ class InEKF {
         void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
         void CorrectKinematics(const vectorKinematics& measured_kinematics);
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);
+        void CorrectDVL(const Eigen::Matrix<double,3,1>& dvl);
 
         void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vector3d& gps_base_pos);
         void SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler);
