@@ -121,42 +121,6 @@ std::map<int,bool> InEKF::getContacts() {
     return contacts_; 
 }
 
-// Set initial GPS lla state
-void InEKF::SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vector3d& gps_base_pos) {
-    initial_lla_ = lla;
-    if (output_gps_) {
-        file.open(filepath_odo_.c_str());
-        file << "timestamp [ns]" << "," << "odo x" << "," << "odo y" << "," << "odo z" << endl;
-        file.close();
-    }
-    initial_ecef_ = lla_to_ecef(initial_lla_);
-
-    // TODO: set gps to base transform
-    Og_to_Ob_ = gps_base_pos;
-}
-
-// Set xyz coordinates TF from world frame to inital gps frame
-// Set initial heading
-void InEKF::SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler) {
-    // IMU facing east?
-    //const double yaw = euler(2,0);
-    double yaw = 0;
-    Ow_to_Og_ = (Eigen::Matrix4d() <<
-        cos(yaw),-sin(yaw), 0, 0,
-        sin(yaw), cos(yaw), 0, 0,
-               0,        0, 1, 0,
-               0,        0, 0, 1).finished();
-    
-    // Use coordinate ENU, use initial heading angle to update the initial rotation matrix
-    state_.setRotation(Ow_to_Og_.block<3,3>(0,0));
-}
-
-void InEKF::SetGpsFilePath(const std::string& path) {
-    filepath_odo_ = path;
-    output_gps_ = true;
-}
-
-
 // InEKF Propagation - Inertial Data
 void InEKF::Propagate(const Eigen::Matrix<double,6,1>& m, double dt) {
 
@@ -676,42 +640,6 @@ void InEKF::CorrectKinematics(const vectorKinematics& measured_kinematics) {
     return;
 }
 
-// reference to https://en.wikipedia.org/wiki/Geographic_coordinate_conversion
-Eigen::Vector3d InEKF::lla_to_ecef(const Eigen::Matrix<double,3,1>& lla) {
-    const double equatorial_radius = 6378137.0;
-    const double polar_radius = 6356752.31424518;
-    const double square_ratio = pow(polar_radius,2) / pow(equatorial_radius,2);
-
-    const double lat = lla(0,0) * M_PI / 180;
-    const double lon = lla(1,0) * M_PI / 180;
-    const double alt = lla(2,0);
-    const double N = equatorial_radius / sqrt(1 - (1-square_ratio) * pow(sin(lat),2));
-
-    const double z = (square_ratio * N + alt) * sin(lat);
-    const double q = (N + alt) * cos(lat);
-    const double x = q * cos(lon);
-    const double y = q * sin(lon);
-
-    return (Eigen::Vector3d() << x, y, z).finished();
-}
-
-Eigen::Matrix<double,3,1> InEKF::lla_to_enu(const Eigen::Matrix<double,3,1>& lla) {
-    // readings are geodetic
-    Eigen::Vector3d cur_ecef = lla_to_ecef(lla);
-    Eigen::Vector3d r_ecef = cur_ecef - initial_ecef_;
-
-    double phi = initial_lla_(0) * M_PI / 180;
-    double lam = initial_lla_(1) * M_PI / 180;
-
-    Eigen::Matrix3d R = (Eigen::Matrix3d() <<
-        -sin(lam),          cos(lam),           0,
-        -cos(lam)*sin(phi), -sin(lam)*sin(phi), cos(phi),
-        cos(lam)*cos(phi),  sin(lam)*cos(phi),  sin(phi)
-    ).finished();
-
-    return R * r_ecef;
-}
-
 void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
 #if INEKF_USE_MUTEX
     lock_guard<mutex> mlock(estimated_contacts_mutex_);
@@ -733,8 +661,6 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
     Y.segment(startIndex,3) = gps.head(3);
-    //Y.segment(startIndex,3) = base_Ob.head(3);
-    //Y.segment(startIndex,3) = xyz.head(3);  // without gps-base transform
     Y(startIndex+4) = 1; 
 
     // Fill out b
@@ -796,8 +722,6 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
     Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
     Y.segment(startIndex,3) = dvl.head(3);
-    //Y.segment(startIndex,3) = base_Ob.head(3);
-    //Y.segment(startIndex,3) = xyz.head(3);  // without dvl-base transform
     Y(startIndex+4) = 1; 
 
     // Fill out b
