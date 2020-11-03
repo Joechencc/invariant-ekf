@@ -102,12 +102,6 @@ class InEKF {
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);
         void CorrectDVL(const Eigen::Matrix<double,3,1>& dvl);
 
-        void SetInitialLLA(const Eigen::Matrix<double,3,1>& lla, const Eigen::Vector3d& gps_base_pos);
-        void SetTfEnuOdo(const Eigen::Matrix<double,3,1>& euler);
-        Eigen::Vector3d lla_to_ecef(const Eigen::Matrix<double,3,1>& lla);
-        Eigen::Matrix<double,3,1> lla_to_enu(const Eigen::Matrix<double,3,1>& lla);
-        void SetGpsFilePath(const std::string& path);
-
     private:
         RobotState state_;
         NoiseParams noise_params_;
@@ -117,13 +111,6 @@ class InEKF {
         std::map<int,bool> contacts_;
         std::map<int,int> estimated_contact_positions_;
         
-        Eigen::Matrix<double,3,1> initial_lla_;
-        Eigen::Matrix<double,3,1> initial_ecef_;
-        Eigen::Matrix4d Ow_to_Og_;
-        Eigen::Vector3d Og_to_Ob_;
-        std::ofstream file;
-        std::string filepath_odo_;
-        bool output_gps_ = false;
 #if INEKF_USE_MUTEX
         std::mutex estimated_contacts_mutex_;
         std::mutex estimated_landmarks_mutex_;
