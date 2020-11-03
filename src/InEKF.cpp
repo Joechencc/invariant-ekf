@@ -42,6 +42,8 @@ ostream& operator<<(ostream& os, const Observation& o) {
 // Default constructor
 InEKF::InEKF() : g_((Eigen::VectorXd(3) << 0,0,-9.81).finished()){}
 
+InEKF::InEKF(double g) : g_((Eigen::VectorXd(3) << 0,0,g).finished()){}
+
 // Constructor with noise params
 InEKF::InEKF(NoiseParams params) : g_((Eigen::VectorXd(3) << 0,0,-9.81).finished()), noise_params_(params) {}
 
@@ -798,7 +800,7 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
     Y.segment(startIndex,3) = dvl.head(3);
     //Y.segment(startIndex,3) = base_Ob.head(3);
     //Y.segment(startIndex,3) = xyz.head(3);  // without dvl-base transform
-    Y(startIndex+4) = 1; 
+    Y(startIndex+3) = 1; 
 
     // Fill out b
     startIndex = b.rows();

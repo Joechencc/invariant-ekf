@@ -77,6 +77,7 @@ class InEKF {
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         InEKF();
+        InEKF(double g);
         InEKF(NoiseParams params);
         InEKF(RobotState state);
         InEKF(RobotState state, NoiseParams params);
