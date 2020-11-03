@@ -760,7 +760,7 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
     // Correct state
     Observation obs(Y,b,H,N,PI);
     if (!obs.empty()) {
-        this->Correct(obs);
+        this->Correct_left(obs);
     }
 
     return;
