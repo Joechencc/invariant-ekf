@@ -27,6 +27,7 @@ NoiseParams::NoiseParams() {
     setLandmarkNoise(0.1);
     setContactNoise(0.1);
     setGpsNoise(0.1);
+    setDepthNoise(0.1);
     setDvlNoise(0.1);
 }
 
@@ -58,6 +59,10 @@ void NoiseParams::setGpsNoise(double std) { Qgps_ = std*std*Eigen::Matrix3d::Ide
 void NoiseParams::setGpsNoise(const Eigen::Vector3d& std) { Qgps_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setGpsNoise(const Eigen::Matrix3d& cov) { Qgps_ = cov; }
 
+void NoiseParams::setDepthNoise(double std) { Qdepth_ << 1e9,0,0, 0,1e9,0, 0,0,std*std; }
+void NoiseParams::setDepthNoise(const Eigen::Vector3d& std) { Qdepth_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
+void NoiseParams::setDepthNoise(const Eigen::Matrix3d& cov) { Qdepth_ = cov; }
+
 void NoiseParams::setDvlNoise(double std) { Qdvl_ = std*std*Eigen::Matrix3d::Identity(); }
 void NoiseParams::setDvlNoise(const Eigen::Vector3d& std) { Qdvl_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setDvlNoise(const Eigen::Matrix3d& cov) { Qdvl_ = cov; }
@@ -69,6 +74,7 @@ Eigen::Matrix3d NoiseParams::getAccelerometerBiasCov() { return Qba_; }
 Eigen::Matrix3d NoiseParams::getLandmarkCov() { return Ql_; }
 Eigen::Matrix3d NoiseParams::getContactCov() { return Qc_; }
 Eigen::Matrix3d NoiseParams::getGpsCov() { return Qgps_; }
+Eigen::Matrix3d NoiseParams::getDepthCov() { return Qdepth_; }
 Eigen::Matrix3d NoiseParams::getDvlCov() { return Qdvl_; }
 
 std::ostream& operator<<(std::ostream& os, const NoiseParams& p) {
@@ -80,6 +86,7 @@ std::ostream& operator<<(std::ostream& os, const NoiseParams& p) {
     os << "Landmark Covariance:\n" << p.Ql_ << endl;
     os << "Contact Covariance:\n" << p.Qc_ << endl;
     os << "GPS Covariance:\n" << p.Qgps_ << endl;
+    os << "DEPTH Covariance:\n" << p.Qdepth_ << endl;
     os << "DVL Covariance:\n" << p.Qdvl_ << endl;
     os << "-----------------------------------" << endl;
     return os;

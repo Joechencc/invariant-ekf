@@ -51,6 +51,10 @@ class NoiseParams {
         void setGpsNoise(const Eigen::Vector3d& std);
         void setGpsNoise(const Eigen::Matrix3d& cov);
 
+        void setDepthNoise(double std);
+        void setDepthNoise(const Eigen::Vector3d& std);
+        void setDepthNoise(const Eigen::Matrix3d& cov);
+
         void setDvlNoise(double std);
         void setDvlNoise(const Eigen::Vector3d& std);
         void setDvlNoise(const Eigen::Matrix3d& cov);
@@ -62,6 +66,7 @@ class NoiseParams {
         Eigen::Matrix3d getLandmarkCov();
         Eigen::Matrix3d getContactCov();
         Eigen::Matrix3d getGpsCov();
+        Eigen::Matrix3d getDepthCov();
         Eigen::Matrix3d getDvlCov();
 
         friend std::ostream& operator<<(std::ostream& os, const NoiseParams& p);  
@@ -74,6 +79,7 @@ class NoiseParams {
         Eigen::Matrix3d Ql_;
         Eigen::Matrix3d Qc_;
         Eigen::Matrix3d Qgps_;
+        Eigen::Matrix3d Qdepth_;
         Eigen::Matrix3d Qdvl_;
 };
 

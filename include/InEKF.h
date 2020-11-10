@@ -100,6 +100,7 @@ class InEKF {
         void CorrectLandmarks(const vectorLandmarks& measured_landmarks);
         void CorrectKinematics(const vectorKinematics& measured_kinematics);
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);
+        void CorrectDepth(const double& depth);
         void CorrectDVL(const Eigen::Matrix<double,3,1>& dvl);
 
     private:

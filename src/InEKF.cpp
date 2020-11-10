@@ -675,7 +675,7 @@ void InEKF::CorrectGPS(const Eigen::Matrix<double,3,1>& gps) {
     startIndex = H.rows();
     H.conservativeResize(startIndex+3, dimP);
     H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
-    H.block(startIndex,6,3,3) = Eigen::Matrix3d::Identity(); // I
+    H.block(startIndex,6,3,3) = -Eigen::Matrix3d::Identity(); // I
 
     // Fill out N
     startIndex = N.rows();
@@ -727,13 +727,13 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
 
     //Y.segment(startIndex,3) = base_Ob.head(3);
     //Y.segment(startIndex,3) = xyz.head(3);  // without dvl-base transform
-    Y(startIndex+3) = 1; 
+    Y(startIndex+3) = -1; 
 
     // Fill out b
     startIndex = b.rows();
     b.conservativeResize(startIndex+dimX, Eigen::NoChange);
     b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
-    b(startIndex+3) = 1;          
+    b(startIndex+3) = -1;          
 
     // Fill out H
     startIndex = H.rows();
@@ -760,11 +760,74 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
     // Correct state
     Observation obs(Y,b,H,N,PI);
     if (!obs.empty()) {
-        this->Correct_left(obs);
+        this->Correct(obs);
     }
 
     return;
 }
+
+void InEKF::CorrectDepth(const double& depth) {
+#if INEKF_USE_MUTEX
+    lock_guard<mutex> mlock(estimated_contacts_mutex_);
+#endif
+    Eigen::VectorXd Y;
+    Eigen::VectorXd b;
+    Eigen::MatrixXd H;
+    Eigen::MatrixXd N;
+    Eigen::MatrixXd PI;
+
+    Eigen::Matrix3d R = state_.getRotation();
+
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int startIndex;
+
+    // Fill out Y
+    startIndex = Y.rows();
+    Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    Y(startIndex) = state_.getPosition()(0);
+    Y(startIndex+1) = state_.getPosition()(1);
+    Y(startIndex+2) = depth;
+    Y(startIndex+4) = -1; 
+
+    // Fill out b
+    startIndex = b.rows();
+    b.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    b(startIndex+4) = -1;          
+
+    // Fill out H
+    startIndex = H.rows();
+    H.conservativeResize(startIndex+3, dimP);
+    H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
+    H.block(startIndex,6,3,3) = Eigen::Matrix3d::Identity(); // I
+
+    // Fill out N
+    startIndex = N.rows();
+    N.conservativeResize(startIndex+3, startIndex+3);
+    N.block(startIndex,0,3,startIndex) = Eigen::MatrixXd::Zero(3,startIndex);
+    N.block(0,startIndex,startIndex,3) = Eigen::MatrixXd::Zero(startIndex,3);
+    N.block(startIndex,startIndex,3,3) = R.transpose() * noise_params_.getDepthCov() * R;
+
+    // Fill out PI      
+    startIndex = PI.rows();
+    int startIndex2 = PI.cols();
+    PI.conservativeResize(startIndex+3, startIndex2+dimX);
+    PI.block(startIndex,0,3,startIndex2) = Eigen::MatrixXd::Zero(3,startIndex2);
+    PI.block(0,startIndex2,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+    PI.block(startIndex,startIndex2,3,dimX) = Eigen::MatrixXd::Zero(3,dimX);
+    PI.block(startIndex,startIndex2,3,3) = Eigen::Matrix3d::Identity();
+
+    // Correct state
+    Observation obs(Y,b,H,N,PI);
+    if (!obs.empty()) {
+        this->Correct(obs);
+    }
+
+    return;
+}
+
 
 void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
     unsigned int dimX = M.cols();
