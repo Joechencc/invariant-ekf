@@ -101,7 +101,11 @@ class InEKF {
         void CorrectKinematics(const vectorKinematics& measured_kinematics);
         void CorrectGPS(const Eigen::Matrix<double,3,1>& gps);
         void CorrectDepth(const double& depth);
+        void CorrectDepth_left(const double& depth);
         void CorrectDVL(const Eigen::Matrix<double,3,1>& dvl);
+
+        void right_to_left();
+        void left_to_right();
 
     private:
         RobotState state_;

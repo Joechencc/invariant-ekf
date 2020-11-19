@@ -740,6 +740,7 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
     H.conservativeResize(startIndex+3, dimP);
     H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
     H.block(startIndex,3,3,3) = Eigen::Matrix3d::Identity(); // I
+    //cout<< "H:::"<<H<<endl;
 
     // Fill out N
     startIndex = N.rows();
@@ -765,7 +766,7 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
 
     return;
 }
-
+/*
 void InEKF::CorrectDepth(const double& depth) {
 #if INEKF_USE_MUTEX
     lock_guard<mutex> mlock(estimated_contacts_mutex_);
@@ -827,7 +828,110 @@ void InEKF::CorrectDepth(const double& depth) {
 
     return;
 }
+*/
 
+void InEKF::CorrectDepth_left(const double& depth) {
+#if INEKF_USE_MUTEX
+    lock_guard<mutex> mlock(estimated_contacts_mutex_);
+#endif
+    Eigen::VectorXd Y;
+    Eigen::VectorXd b;
+    Eigen::MatrixXd H;
+    Eigen::MatrixXd N;
+    Eigen::MatrixXd PI;
+
+    Eigen::Matrix3d R = state_.getRotation();
+
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int startIndex;
+
+    // Fill out Y
+    startIndex = Y.rows();
+    Y.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    Y(startIndex) = state_.getPosition()(0);
+    Y(startIndex+1) = state_.getPosition()(1);
+    //Y(startIndex+2) = state_.getPosition()(2);
+    Y(startIndex+2) = depth;
+    Y(startIndex+4) = 1; 
+
+    // Fill out b
+    startIndex = b.rows();
+    b.conservativeResize(startIndex+dimX, Eigen::NoChange);
+    b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
+    b(startIndex+4) = 1;          
+
+    // Fill out H
+    startIndex = H.rows();
+    H.conservativeResize(startIndex+3, dimP);
+    H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
+    H.block(startIndex,6,3,3) = -Eigen::Matrix3d::Identity(); // I
+    //H(0,6) = 0;
+    //H(1,7) = 0;
+
+    // Fill out N
+    startIndex = N.rows();
+    N.conservativeResize(startIndex+3, startIndex+3);
+    N.block(startIndex,0,3,startIndex) = Eigen::MatrixXd::Zero(3,startIndex);
+    N.block(0,startIndex,startIndex,3) = Eigen::MatrixXd::Zero(startIndex,3);
+    N.block(startIndex,startIndex,3,3) = R.transpose() * noise_params_.getDepthCov() * R;
+
+    // Fill out PI      
+    startIndex = PI.rows();
+    int startIndex2 = PI.cols();
+    PI.conservativeResize(startIndex+3, startIndex2+dimX);
+    PI.block(startIndex,0,3,startIndex2) = Eigen::MatrixXd::Zero(3,startIndex2);
+    PI.block(0,startIndex2,startIndex,dimX) = Eigen::MatrixXd::Zero(startIndex,dimX);
+    PI.block(startIndex,startIndex2,3,dimX) = Eigen::MatrixXd::Zero(3,dimX);
+    PI.block(startIndex,startIndex2,3,3) = Eigen::Matrix3d::Identity();
+
+    // Correct state
+    Observation obs(Y,b,H,N,PI);
+    if (!obs.empty()) {
+        this->Correct_left(obs);
+    }
+
+    return;
+}
+
+
+
+void InEKF::right_to_left() {
+
+    int dimTheta = state_.dimTheta();
+    int dimP = state_.dimP();
+
+    Eigen::MatrixXd P_original = state_.getP();
+    //cout<< "right_to_left_P::::::::start"<<P_original;
+    Eigen::MatrixXd State_predicted = state_.getX();
+
+    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(dimP,dimP);
+    Eigen::MatrixXd Adj = I;
+    Adj.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(State_predicted);
+    Eigen::MatrixXd Adj_inverse = Adj.inverse();
+    Eigen::MatrixXd P_pred = Adj_inverse * P_original * Adj_inverse.transpose();
+    //cout<< "right_to_left_P::::::::finish"<<P_pred;
+    state_.setP(P_pred);
+
+}
+
+void InEKF::left_to_right() {
+    
+    int dimTheta = state_.dimTheta();
+    int dimP = state_.dimP();
+
+    Eigen::MatrixXd P_original = state_.getP();
+    //cout<< "left_to_right_P::::::::start"<<P_original;
+    Eigen::MatrixXd State_predicted = state_.getX();
+    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(dimP,dimP);
+    Eigen::MatrixXd Adj = I;
+    Adj.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(State_predicted);
+    Eigen::MatrixXd P_pred = Adj * P_original * Adj.transpose();
+    //cout<< "left_to_right_P::::::::finish"<<P_pred;
+    state_.setP(P_pred);
+
+}
 
 void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
     unsigned int dimX = M.cols();
@@ -836,6 +940,7 @@ void removeRowAndColumn(Eigen::MatrixXd& M, int index) {
     M.block(0,index,dimX,dimX-index-1) = M.rightCols(dimX-index-1).eval();
     M.conservativeResize(dimX-1,dimX-1);
 }
+
 
 } // end inekf namespace
 

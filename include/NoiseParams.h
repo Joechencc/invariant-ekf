@@ -55,7 +55,7 @@ class NoiseParams {
         void setDepthNoise(const Eigen::Vector3d& std);
         void setDepthNoise(const Eigen::Matrix3d& cov);
 
-        void setDvlNoise(double std);
+        void setDvlNoise(double std, double std_z);
         void setDvlNoise(const Eigen::Vector3d& std);
         void setDvlNoise(const Eigen::Matrix3d& cov);
 
