@@ -190,6 +190,116 @@ void InEKF::Propagate(const Eigen::Matrix<double,6,1>& m, double dt) {
     return;
 }
 
+
+// InEKF Propagation - Inertial Data
+void InEKF::Propagate_mag(const Eigen::Matrix<double,6,1>& m, Eigen::Matrix3d cur_imu_orientation, double dt) {
+
+    Eigen::Vector3d w = m.head(3) - state_.getGyroscopeBias();    // Angular Velocity
+    Eigen::Vector3d a = m.tail(3) - state_.getAccelerometerBias(); // Linear Acceleration
+    
+    Eigen::MatrixXd X = state_.getX();
+    Eigen::MatrixXd P = state_.getP();
+
+    // Extract State
+    Eigen::Matrix3d R = state_.getRotation();
+    Eigen::Vector3d v = state_.getVelocity();
+    Eigen::Vector3d p = state_.getPosition();
+
+    // Strapdown IMU motion model
+    Eigen::Vector3d phi = w*dt; 
+    Eigen::Matrix3d R_pred = cur_imu_orientation; //Magnetometer
+    Eigen::Matrix3d R_pred_gyro = R * Exp_SO3(phi); //Gyro
+
+    Eigen::Vector3d R_pred_angle = R_pred.eulerAngles(0, 1, 2);
+    Eigen::Vector3d R_pred_gyro_angle = R_pred_gyro.eulerAngles(0, 1, 2);
+    Eigen::Vector3d R_pred_angle_diff;
+
+    R_pred_angle_diff(0) = R_pred_angle(0) - R_pred_gyro_angle(0);
+    R_pred_angle_diff(1) = R_pred_angle(1) - R_pred_gyro_angle(1);
+    R_pred_angle_diff(2) = R_pred_angle(2) - R_pred_gyro_angle(2);
+    while (R_pred_angle_diff(0) >= 1.57) R_pred_angle_diff(0) -= 3.1415926;
+    while (R_pred_angle_diff(0) < -1.57) R_pred_angle_diff(0) += 3.1415926;
+    while (R_pred_angle_diff(1) >= 1.57) R_pred_angle_diff(1) -= 3.1415926;
+    while (R_pred_angle_diff(1) < -1.57) R_pred_angle_diff(1) += 3.1415926;
+    while (R_pred_angle_diff(2) >= 1.57) R_pred_angle_diff(2) -= 3.1415926;
+    while (R_pred_angle_diff(2) < -1.57) R_pred_angle_diff(2) += 3.1415926;
+    //std::cout << "angle difference:"<< endl;
+    //std::cout << R_pred_angle_diff << endl;
+    Eigen::Vector3d R_pred_correct = 0.1 * R_pred_angle_diff + R_pred_gyro_angle; // estimate
+
+    //R_pred = R_pred_angle.toRotationMatrix();
+    Eigen::AngleAxisd rollAngle(R_pred_correct[0], Eigen::Vector3d::UnitX());
+    Eigen::AngleAxisd pitchAngle(R_pred_correct[1], Eigen::Vector3d::UnitY());
+    Eigen::AngleAxisd yawAngle(R_pred_correct[2], Eigen::Vector3d::UnitZ());
+
+    R_pred = rollAngle  * pitchAngle * yawAngle;
+/*
+    std::cout << "original"<<endl;
+    std::cout << R_pred_gyro << endl;
+    std::cout << "estimate"<<endl;
+    std::cout << R_pred << endl;
+
+    std::cout << "rotationMatrix:"<< endl; 
+    std::cout << R_pred << endl;
+    std::cout << "rotationMatrix_real:"<< endl; 
+    std::cout << R_pred_gyro << endl;
+
+    std::cout << "cur_imu_orientation:"<< endl; 
+    std::cout << cur_imu_orientation.eulerAngles(0, 1, 2) << endl;
+    std::cout << "R_pred_angle:"<< endl; 	
+    std::cout << R_pred_angle << endl;
+*/
+    Eigen::Vector3d v_pred = v + (R*a + g_)*dt;
+    Eigen::Vector3d p_pred = p + v*dt + 0.5*(R*a + g_)*dt*dt;
+
+    // Set new state (bias has constant dynamics)
+    state_.setRotation(R_pred);
+    state_.setVelocity(v_pred);
+    state_.setPosition(p_pred);
+
+    // ---- Linearized invariant error dynamics -----
+    int dimX = state_.dimX();
+    int dimP = state_.dimP();
+    int dimTheta = state_.dimTheta();
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(dimP,dimP);
+    // Inertial terms
+    A.block<3,3>(3,0) = skew(g_); // TODO: Efficiency could be improved by not computing the constant terms every time
+    A.block<3,3>(6,3) = Eigen::Matrix3d::Identity();
+    // Bias terms
+    A.block<3,3>(0,dimP-dimTheta) = -R;
+    A.block<3,3>(3,dimP-dimTheta+3) = -R;
+    for (int i=3; i<dimX; ++i) {
+        A.block<3,3>(3*i-6,dimP-dimTheta) = -skew(X.block<3,1>(0,i))*R;
+    } 
+
+    // Noise terms
+    Eigen::MatrixXd Qk = Eigen::MatrixXd::Zero(dimP,dimP); // Landmark noise terms will remain zero
+    Qk.block<3,3>(0,0) = noise_params_.getGyroscopeCov(); 
+    Qk.block<3,3>(3,3) = noise_params_.getAccelerometerCov();
+    for(map<int,int>::iterator it=estimated_contact_positions_.begin(); it!=estimated_contact_positions_.end(); ++it) {
+        Qk.block<3,3>(3+3*(it->second-3),3+3*(it->second-3)) = noise_params_.getContactCov(); // Contact noise terms
+    }
+    Qk.block<3,3>(dimP-dimTheta,dimP-dimTheta) = noise_params_.getGyroscopeBiasCov();
+    Qk.block<3,3>(dimP-dimTheta+3,dimP-dimTheta+3) = noise_params_.getAccelerometerBiasCov();
+
+    // Discretization
+    Eigen::MatrixXd I = Eigen::MatrixXd::Identity(dimP,dimP);
+    Eigen::MatrixXd Phi = I + A*dt; // Fast approximation of exp(A*dt). TODO: explore using the full exp() instead
+    Eigen::MatrixXd Adj = I;
+    Adj.block(0,0,dimP-dimTheta,dimP-dimTheta) = Adjoint_SEK3(X); // Approx 200 microseconds
+    Eigen::MatrixXd PhiAdj = Phi * Adj;
+    Eigen::MatrixXd Qk_hat = PhiAdj * Qk * PhiAdj.transpose() * dt; // Approximated discretized noise matrix (faster by 400 microseconds)
+
+    // Propagate Covariance
+    Eigen::MatrixXd P_pred = Phi * P * Phi.transpose() + Qk_hat;
+
+    // Set new covariance
+    state_.setP(P_pred);
+
+    return;
+}
+
+
 // Left-InEKF Propagation - Inertial Data
 void InEKF::Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt) {
 
@@ -766,7 +876,7 @@ void InEKF::CorrectDVL(const Eigen::Matrix<double,3,1>& dvl) {
 
     return;
 }
-/*
+
 void InEKF::CorrectDepth(const double& depth) {
 #if INEKF_USE_MUTEX
     lock_guard<mutex> mlock(estimated_contacts_mutex_);
@@ -789,20 +899,23 @@ void InEKF::CorrectDepth(const double& depth) {
     Y.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
     Y(startIndex) = state_.getPosition()(0);
     Y(startIndex+1) = state_.getPosition()(1);
+    //Y(startIndex+2) = state_.getPosition()(2);
     Y(startIndex+2) = depth;
-    Y(startIndex+4) = -1; 
+    Y(startIndex+4) = 1; 
 
     // Fill out b
     startIndex = b.rows();
     b.conservativeResize(startIndex+dimX, Eigen::NoChange);
     b.segment(startIndex,dimX) = Eigen::VectorXd::Zero(dimX);
-    b(startIndex+4) = -1;          
+    b(startIndex+4) = 1;          
 
     // Fill out H
     startIndex = H.rows();
     H.conservativeResize(startIndex+3, dimP);
     H.block(startIndex,0,3,dimP) = Eigen::MatrixXd::Zero(3,dimP);
-    H.block(startIndex,6,3,3) = Eigen::Matrix3d::Identity(); // I
+    H.block(startIndex,6,3,3) = -Eigen::Matrix3d::Identity(); // I
+    //H(0,6) = 0;
+    //H(1,7) = 0;
 
     // Fill out N
     startIndex = N.rows();
@@ -828,7 +941,7 @@ void InEKF::CorrectDepth(const double& depth) {
 
     return;
 }
-*/
+
 
 void InEKF::CorrectDepth_left(const double& depth) {
 #if INEKF_USE_MUTEX

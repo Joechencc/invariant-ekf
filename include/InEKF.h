@@ -94,6 +94,7 @@ class InEKF {
         void setContacts(std::vector<std::pair<int,bool> > contacts);
 
         void Propagate(const Eigen::Matrix<double,6,1>& m, double dt);
+	void Propagate_mag(const Eigen::Matrix<double,6,1>& m, Eigen::Matrix3d cur_imu_orientation_, double dt);
         void Propagate_left(const Eigen::Matrix<double,6,1>& m, double dt);
         void Correct(const Observation& obs);
         void Correct_left(const Observation& obs);
