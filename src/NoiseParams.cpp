@@ -27,7 +27,7 @@ NoiseParams::NoiseParams() {
     setLandmarkNoise(0.1);
     setContactNoise(0.1);
     setGpsNoise(0.1);
-    setDepthNoise(0.1);
+    setDepthNoise(100000,0.1);
     setDvlNoise(0.1,10000);
 }
 
@@ -43,6 +43,7 @@ void NoiseParams::setGyroscopeBiasNoise(double std) { Qbg_ = std*std*Eigen::Matr
 void NoiseParams::setGyroscopeBiasNoise(const Eigen::Vector3d& std) { Qbg_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setGyroscopeBiasNoise(const Eigen::Matrix3d& cov) { Qbg_ = cov; }
 
+void NoiseParams::setAccelerometerBiasNoise(double std, double std_z) { Qdvl_ << std*std,0,0, 0,std*std,0, 0,0,std_z*std_z; }
 void NoiseParams::setAccelerometerBiasNoise(double std) { Qba_ = std*std*Eigen::Matrix3d::Identity(); }
 void NoiseParams::setAccelerometerBiasNoise(const Eigen::Vector3d& std) { Qba_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setAccelerometerBiasNoise(const Eigen::Matrix3d& cov) { Qba_ = cov; }
@@ -59,7 +60,7 @@ void NoiseParams::setGpsNoise(double std) { Qgps_ = std*std*Eigen::Matrix3d::Ide
 void NoiseParams::setGpsNoise(const Eigen::Vector3d& std) { Qgps_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setGpsNoise(const Eigen::Matrix3d& cov) { Qgps_ = cov; }
 
-void NoiseParams::setDepthNoise(double std) { Qdepth_ << 1e15,0,0, 0,1e15,0, 0,0,std*std; }
+void NoiseParams::setDepthNoise(double std, double std_z) { Qdepth_ << std*std,0,0, 0,std*std,0, 0,0,std_z*std_z; }
 void NoiseParams::setDepthNoise(const Eigen::Vector3d& std) { Qdepth_ << std(0)*std(0),0,0, 0,std(1)*std(1),0, 0,0,std(2)*std(2); }
 void NoiseParams::setDepthNoise(const Eigen::Matrix3d& cov) { Qdepth_ = cov; }
 

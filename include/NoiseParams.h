@@ -36,6 +36,7 @@ class NoiseParams {
         void setGyroscopeBiasNoise(const Eigen::Matrix3d& cov);
 
         void setAccelerometerBiasNoise(double std);
+        void setAccelerometerBiasNoise(double std, double std_z);
         void setAccelerometerBiasNoise(const Eigen::Vector3d& std);
         void setAccelerometerBiasNoise(const Eigen::Matrix3d& cov);  
 
@@ -51,7 +52,7 @@ class NoiseParams {
         void setGpsNoise(const Eigen::Vector3d& std);
         void setGpsNoise(const Eigen::Matrix3d& cov);
 
-        void setDepthNoise(double std);
+        void setDepthNoise(double std, double std_z);
         void setDepthNoise(const Eigen::Vector3d& std);
         void setDepthNoise(const Eigen::Matrix3d& cov);
 
